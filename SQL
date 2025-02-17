@@ -1,0 +1,66 @@
+CREATE DATABASE control_de_stock;
+USE control_de_stock;
+
+-- Tabla de Locales
+CREATE TABLE Locales (
+    id_local INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(50) NOT NULL,
+    direccion VARCHAR(100) NOT NULL,
+    ciudad VARCHAR(50),
+    provincia VARCHAR(50),
+    telefono VARCHAR(20),
+    responsable VARCHAR(50)
+);
+
+-- Tabla de Ventas
+CREATE TABLE Ventas (
+    id_ventas INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    fecha DATE NOT NULL,
+    semana INT NOT NULL,
+    familia VARCHAR(20),
+    rubro VARCHAR(20),
+    linea VARCHAR(20),
+    codigo VARCHAR(20) NOT NULL,
+    descripcion VARCHAR(20) NOT NULL,
+    local INT NOT NULL,
+    importe DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (local) REFERENCES Locales(id_local) ON DELETE CASCADE
+);
+
+-- Tabla de Movimientos
+CREATE TABLE Movimientos (
+    id_movimientos INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    fecha DATE NOT NULL,
+    semana INT NOT NULL,
+    familia VARCHAR(20),
+    rubro VARCHAR(20),
+    linea VARCHAR(20),
+    codigo VARCHAR(20) NOT NULL,
+    descripcion VARCHAR(20) NOT NULL,
+    local INT NOT NULL,
+    valorizado DECIMAL(12,2),
+    original INT NOT NULL,
+    ingresos_egresos VARCHAR(10) NOT NULL,
+    FOREIGN KEY (local) REFERENCES Locales(id_local) ON DELETE CASCADE
+);
+
+-- Tabla de Control de Stock
+CREATE TABLE control_stock (
+    id_control_stock INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    fecha DATE NOT NULL,
+    semana INT NOT NULL,
+    familia VARCHAR(20),
+    rubro VARCHAR(20),
+    linea VARCHAR(20),
+    codigo VARCHAR(50) NOT NULL,
+    descripcion VARCHAR(20) NOT NULL,
+    local INT NOT NULL,
+    importe DECIMAL(12,2) NOT NULL,
+    stock INT NOT NULL,
+    FOREIGN KEY (local) REFERENCES Locales(id_local) ON DELETE CASCADE
+);
+
+ALTER TABLE Ventas 
+ADD CONSTRAINT fk_local
+FOREIGN KEY (local) REFERENCES Locales(id_local)
+ON DELETE CASCADE;
