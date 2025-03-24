@@ -1,0 +1,186 @@
+CREATE TABLE stock (
+    id_producto INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL,
+    cantidad_disponible INT NOT NULL DEFAULT 0,
+    precio DECIMAL(10,2) NOT NULL
+);
+
+CREATE TABLE ventas (
+    id_venta INT PRIMARY KEY AUTO_INCREMENT,
+    id_producto INT,
+    cantidad_vendida INT NOT NULL,
+    fecha_venta DATETIME DEFAULT CURRENT_TIMESTAMP,
+    total DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (id_producto) REFERENCES stock(id_producto)
+);
+
+CREATE TABLE movimiento_mercaderia (
+    id_movimiento INT PRIMARY KEY AUTO_INCREMENT,
+    id_producto INT,
+    tipo_movimiento ENUM('entrada', 'salida') NOT NULL,
+    cantidad INT NOT NULL,
+    fecha_movimiento DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_producto) REFERENCES stock(id_producto)
+);
+
+
+-- Insertar datos en stock
+INSERT INTO stock (nombre, cantidad_disponible, precio) VALUES
+('Laptop Dell', 50, 1200.00),
+('Mouse Logitech', 150, 25.99),
+('Teclado Mecánico', 80, 45.50),
+('Monitor 24 pulgadas', 60, 180.75),
+('Disco Duro 1TB', 100, 75.90),
+('Memoria RAM 16GB', 70, 85.30),
+('Silla Ergonómica', 30, 220.00),
+('Escritorio Gamer', 20, 300.50),
+('Impresora HP', 40, 150.00),
+('Router TP-Link', 90, 60.25);
+
+-- Insertar datos en ventas
+INSERT INTO ventas (id_producto, cantidad_vendida, total) VALUES
+(1, 2, 2400.00),
+(3, 5, 227.50),
+(5, 3, 227.70),
+(2, 10, 259.90),
+(6, 2, 170.60),
+(4, 1, 180.75),
+(9, 4, 600.00),
+(7, 1, 220.00),
+(8, 2, 601.00),
+(10, 3, 180.75);
+
+-- Insertar datos en movimiento_mercaderia
+INSERT INTO movimiento_mercaderia (id_producto, tipo_movimiento, cantidad) VALUES
+(1, 'entrada', 20),
+(2, 'entrada', 50),
+(3, 'salida', 5),
+(4, 'entrada', 30),
+(5, 'salida', 3),
+(6, 'entrada', 25),
+(7, 'salida', 2),
+(8, 'entrada', 10),
+(9, 'salida', 4),
+(10, 'entrada', 15);
+
+
+DELIMITER $$
+
+CREATE TRIGGER before_movimiento_mercaderia
+BEFORE INSERT ON movimiento_mercaderia
+FOR EACH ROW
+BEGIN
+    DECLARE cantidad_en_stock INT;
+    
+    -- Solo se activa para movimientos de salida
+    IF NEW.tipo_movimiento = 'salida' THEN
+        -- Obtener la cantidad disponible en stock para el producto
+        SELECT cantidad_disponible INTO cantidad_en_stock
+        FROM stock
+        WHERE id_producto = NEW.id_producto;
+
+        -- Verificar si hay suficiente stock para el movimiento de salida
+        IF cantidad_en_stock < NEW.cantidad THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'No hay suficiente stock para realizar el movimiento de salida';
+        ELSE
+            -- Restar la cantidad de stock
+            UPDATE stock
+            SET cantidad_disponible = cantidad_disponible - NEW.cantidad
+            WHERE id_producto = NEW.id_producto;
+        END IF;
+    END IF;
+END$$
+
+DELIMITER ;
+
+
+
+-- Intentar un movimiento de salida que exceda el stock
+INSERT INTO movimiento_mercaderia (id_producto, tipo_movimiento, cantidad) VALUES
+(1, 'salida', 100);  -- Excede el stock de la Laptop Dell (que tiene 50 disponibles)
+
+
+
+-- Intentar un movimiento de salida con una cantidad dentro del stock disponible
+INSERT INTO movimiento_mercaderia (id_producto, tipo_movimiento, cantidad) VALUES
+(1, 'salida', 30);  -- Menos que el stock disponible (50)
+
+
+select * from movimiento_mercaderia;
+
+
+
+DELIMITER $$
+
+
+
+CREATE PROCEDURE calcular_total_ventas(IN id_cliente INT)
+BEGIN
+    -- Selecciona y suma el total de ventas de un cliente específico
+    SELECT SUM(total) AS total_ventas
+    FROM ventas
+    WHERE id_cliente = id_cliente;
+END$$
+
+DELIMITER ;
+
+CALL calcular_total_ventas(1);
+
+DELIMITER $$
+
+CREATE FUNCTION calcular_total_ventas(id_producto INT) 
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+    DECLARE total DECIMAL(10,2);
+
+    -- Calcular el total de ventas del producto
+    SELECT SUM(total) INTO total
+    FROM ventas
+    WHERE id_producto = id_producto;
+
+    -- Si no hay ventas, devolver 0
+    IF total IS NULL THEN
+        SET total = 0;
+    END IF;
+
+    RETURN total;
+END$$
+
+DELIMITER ;
+
+select calcular_total_ventas (1);
+
+select * from ventas;
+
+select * from stock;
+
+
+
+DELIMITER $$
+
+CREATE FUNCTION calcular_total_ventas(id_producto INT) 
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+    DECLARE total DECIMAL(10,2);
+
+    -- Calcular el total de ventas del producto
+    SELECT SUM(v.total * s.cantidad_disponible) INTO total
+    FROM ventas v
+    INNER JOIN stock s ON v.id_producto = s.id_producto
+    WHERE v.id_producto = id_producto;
+
+    -- Si no hay ventas, devolver 0
+    IF total IS NULL THEN
+        SET total = 0;
+    END IF;
+
+    RETURN total;
+END$$
+
+DELIMITER ;
+
+
+
