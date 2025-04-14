@@ -1,0 +1,164 @@
+-- =======================================
+-- SCRIPT COMPLETO - BASE DE DATOS COMISARIA
+-- =======================================
+
+DROP DATABASE IF EXISTS comisaria_db;
+CREATE DATABASE comisaria_db;
+USE comisaria_db;
+
+-- Tabla de rangos
+CREATE TABLE rangos (
+    id_rango INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_rango VARCHAR(50)
+);
+
+-- Tabla de agentes
+CREATE TABLE agentes (
+    id_agente INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(100),
+    rango_id INT,
+    salario_mensual DECIMAL(10,2),
+    fecha_ingreso DATE,
+    FOREIGN KEY (rango_id) REFERENCES rangos(id_rango)
+);
+
+-- Tabla de casos
+CREATE TABLE casos (
+    id_caso INT AUTO_INCREMENT PRIMARY KEY,
+    descripcion TEXT,
+    estado ENUM('abierto', 'en proceso', 'cerrado'),
+    id_agente INT,
+    fecha_inicio DATE,
+    FOREIGN KEY (id_agente) REFERENCES agentes(id_agente)
+);
+
+-- Tabla de auditoria de agentes
+CREATE TABLE auditoria_agentes (
+    id_auditoria INT AUTO_INCREMENT PRIMARY KEY,
+    id_agente INT,
+    fecha_modificacion DATETIME,
+    accion VARCHAR(50),
+    datos_previos TEXT
+);
+
+-- FUNCIONES
+DELIMITER $$
+CREATE FUNCTION CalcularSalarioAnual(salario_mensual DECIMAL(10,2))
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+    RETURN salario_mensual * 12;
+END$$
+
+CREATE FUNCTION ObtenerAntiguedad(fecha_ingreso DATE)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    RETURN TIMESTAMPDIFF(YEAR, fecha_ingreso, CURDATE());
+END$$
+DELIMITER ;
+
+-- PROCEDIMIENTOS
+DELIMITER $$
+CREATE PROCEDURE AddAgente (
+    IN p_nombre VARCHAR(100),
+    IN p_rango_id INT,
+    IN p_salario DECIMAL(10,2),
+    IN p_fecha_ingreso DATE
+)
+BEGIN
+    INSERT INTO agentes (nombre, rango_id, salario_mensual, fecha_ingreso)
+    VALUES (p_nombre, p_rango_id, p_salario, p_fecha_ingreso);
+END$$
+
+CREATE PROCEDURE UpdateEstadoCaso (
+    IN p_id_caso INT,
+    IN p_nuevo_estado ENUM('abierto', 'en proceso', 'cerrado')
+)
+BEGIN
+    UPDATE casos
+    SET estado = p_nuevo_estado
+    WHERE id_caso = p_id_caso;
+END$$
+DELIMITER ;
+
+-- TRIGGERS
+DELIMITER $$
+CREATE TRIGGER trg_auditoria_agente
+AFTER UPDATE ON agentes
+FOR EACH ROW
+BEGIN
+    INSERT INTO auditoria_agentes (id_agente, fecha_modificacion, accion, datos_previos)
+    VALUES (
+        OLD.id_agente,
+        NOW(),
+        'Actualizacion',
+        CONCAT('Nombre: ', OLD.nombre, ', Rango ID: ', OLD.rango_id, ', Salario: ', OLD.salario_mensual)
+    );
+END$$
+
+CREATE TRIGGER trg_no_eliminar_agente_con_casos
+BEFORE DELETE ON agentes
+FOR EACH ROW
+BEGIN
+    DECLARE casos_asignados INT;
+    SELECT COUNT(*) INTO casos_asignados FROM casos WHERE id_agente = OLD.id_agente;
+
+    IF casos_asignados > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'No se puede eliminar un agente asignado a casos.';
+    END IF;
+END$$
+DELIMITER ;
+
+-- VISTAS
+CREATE VIEW vw_cant_agentes_por_rango AS
+SELECT r.nombre_rango, COUNT(*) AS cantidad_agentes
+FROM agentes a
+JOIN rangos r ON a.rango_id = r.id_rango
+GROUP BY r.nombre_rango;
+
+CREATE VIEW vw_agentes_con_casos_asignados AS
+SELECT a.nombre, r.nombre_rango
+FROM agentes a
+JOIN rangos r ON a.rango_id = r.id_rango
+JOIN casos c ON a.id_agente = c.id_agente
+WHERE c.estado IN ('abierto', 'en proceso');
+
+CREATE VIEW vw_casos_por_estado AS
+SELECT estado, COUNT(*) AS cantidad
+FROM casos
+GROUP BY estado;
+
+CREATE VIEW vw_salario_anual_agentes AS
+SELECT nombre, CalcularSalarioAnual(salario_mensual) AS salario_anual
+FROM agentes;
+
+-- INSERCIONES DE DATOS
+INSERT INTO rangos (nombre_rango) VALUES ('Oficial'), ('Suboficial'), ('Comisario');
+
+INSERT INTO agentes (nombre, rango_id, salario_mensual, fecha_ingreso) VALUES
+('Juan Pérez', 1, 50000, '2018-03-10'),
+('Ana Gómez', 2, 65000, '2015-07-01');
+
+INSERT INTO casos (descripcion, estado, id_agente, fecha_inicio) VALUES
+('Robo en supermercado', 'abierto', 1, '2024-10-12'),
+('Violencia familiar', 'en proceso', 2, '2024-11-01');
+
+-- CONSULTAS DE INFORMES
+SELECT * FROM vw_cant_agentes_por_rango;
+SELECT * FROM vw_agentes_con_casos_asignados;
+SELECT * FROM vw_casos_por_estado;
+SELECT * FROM vw_salario_anual_agentes;
+
+SELECT nombre, ObtenerAntiguedad(fecha_ingreso) AS antiguedad_anios FROM agentes;
+
+SELECT a.nombre, COUNT(c.id_caso) AS total_casos
+FROM agentes a
+LEFT JOIN casos c ON a.id_agente = c.id_agente
+GROUP BY a.id_agente;
+
+SELECT a.nombre
+FROM agentes a
+LEFT JOIN casos c ON a.id_agente = c.id_agente
+WHERE c.id_caso IS NULL;
